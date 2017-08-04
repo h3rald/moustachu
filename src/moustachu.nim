@@ -71,8 +71,9 @@ proc parallelReplace(str: string,
   for sub in substitutions:
     result = result.replace(sub[0], sub[1])
 
-proc render(tmplate: string, contextStack: seq[Context], pwd="."): string =
-  ## Take a mustache template `tmplate` and an evaluation Context `c`
+proc render(tmplate: string, contextStack: seq[Context], partialsDir="."): string =
+  ## Take a mustache template `tmplate`, an evaluation Context `c`, and an optional
+  ## path `partialsDir` (by default set to the current directory) which may contain partial files
   ## and return the rendered string. This is the main procedure.
   var renderings : seq[string] = @[]
 
@@ -181,12 +182,14 @@ proc render(tmplate: string, contextStack: seq[Context], pwd="."): string =
         renderings.add(indentation)
 
     of TokenType.partial:
-      var partialTemplate = pwd.joinPath(token.value & ".mustache").readFile
+      var partialTemplate = contextStack.lookupString(token.value)
+      if partialTemplate == "":
+        partialTemplate = partialsDir.joinPath(token.value & ".mustache").readFile
       partialTemplate = partialTemplate.replace("\n", "\n" & indentation)
       if indentation != "":
         partialTemplate = partialTemplate.strip(leading=false, chars={' '})
       indentation = ""
-      renderings.add(render(partialTemplate, contextStack, pwd))
+      renderings.add(render(partialTemplate, contextStack, partialsDir))
 
     else:
       renderings.add(token.value)
@@ -195,14 +198,13 @@ proc render(tmplate: string, contextStack: seq[Context], pwd="."): string =
 
   result = join(renderings, "")
 
-proc render*(tmplate: string, c: Context, pwd="."): string =
+proc render*(tmplate: string, c: Context, partialsDir="."): string =
   var contextStack = @[c]
-  result = tmplate.render(contextStack, pwd)
+  result = tmplate.render(contextStack, partialsDir)
 
 
 when isMainModule:
   import json
-  import os
   import commandeer
 
   proc usage(): string =
@@ -218,7 +220,7 @@ when isMainModule:
 
   var c = newContext(parseFile(jsonFilename))
   var tmplate = readFile(tmplateFilename)
-  var pwd = tmplateFilename.parentDir()
+  var pwd = parentDir(tmplateFileName)
 
   if outputFilename.isNil():
     echo render(tmplate, c, pwd)
